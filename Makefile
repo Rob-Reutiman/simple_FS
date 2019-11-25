@@ -44,14 +44,15 @@ bin/unit_%:	src/tests/unit_%.o $(SFS_LIBRARY)
 	@$(LD) $(LDFLAGS) -o $@ $^
 
 test-unit:	$(SFS_UNIT_TESTS)
-	@for test in bin/unit_*; do 		\
+	@EXIT=0; for test in bin/unit_*; do 		\
 	    for i in $$(seq 0 $$($$test 2>&1 | tail -n 1 | awk '{print $$1}')); do \
 		echo "Running   $$(basename $$test) $$i";		\
 		valgrind --leak-check=full $$test $$i > test.log 2>&1;	\
+		EXIT=$$(($$EXIT + $$?));				\
 		grep -q 'ERROR SUMMARY: 0' test.log || cat test.log;	\
 		! grep -q 'Assertion' test.log || cat test.log; 	\
 	    done				\
-	done
+	done; exit $$EXIT
 
 test-shell:	$(SFS_SHELL)
 	@EXIT=0; for test in bin/test_*.sh; do	\

@@ -22,7 +22,7 @@ void test_cleanup() {
 
 int test_00_disk_open() {
     debug("Check bad path");
-    Disk *disk = disk_open("/root/NOPE", 10);
+    Disk *disk = disk_open("/asdf/NOPE", 10);
     assert(disk == NULL);
    
     debug("Check bad block size");
