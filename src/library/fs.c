@@ -32,6 +32,24 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
+    if (disk_read(disk, 1, block.data) == DISK_FAILURE) {
+        return;
+    }
+
+    for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
+        
+        if(block.inodes[i].valid == 1) {
+            printf("Inode %u\n", i);
+            printf("    size: %u bytes\n", block.inodes[i].size);
+            uint32_t direct_num = 0;
+            for(uint32_t q = 0; q < POINTERS_PER_INODE; q++) {
+                if(block.inodes[i].direct[q]) direct_num++;
+            }
+            printf("    direct blocks: %u\n", direct_num); 
+        }
+        
+    }
+
 }
 
 /**
@@ -49,7 +67,21 @@ void    fs_debug(Disk *disk) {
  * @return      Whether or not all disk operations were successful.
  **/
 bool    fs_format(FileSystem *fs, Disk *disk) {
-    return false;
+
+    if(fs->disk == disk) { // might be wrong (don't format mounted disk)
+        return false;
+    }
+
+    fs->meta_data.magic_number = MAGIC_NUMBER;
+    fs->meta_data.blocks = disk->blocks;
+    fs->meta_data.inode_blocks = disk->blocks * .9;
+    fs->meta_data.inodes = fs->meta_data.inode_blocks * INODES_PER_BLOCK;
+ 
+    for(uint32_t i = 2; i < disk->blocks; i++) {
+        if(disk_write(disk, i, 0) == DISK_FAILURE) return false;
+    }
+
+    return true;
 }
 
 /**
@@ -70,6 +102,9 @@ bool    fs_format(FileSystem *fs, Disk *disk) {
  * @return      Whether or not the mount operation was successful.
  **/
 bool    fs_mount(FileSystem *fs, Disk *disk) {
+
+
+
     return false;
 }
 
@@ -83,6 +118,9 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
  * @param       fs      Pointer to FileSystem structure.
  **/
 void    fs_unmount(FileSystem *fs) {
+
+
+
 }
 
 /**
@@ -98,6 +136,9 @@ void    fs_unmount(FileSystem *fs) {
  * @return      Inode number of allocated Inode.
  **/
 ssize_t fs_create(FileSystem *fs) {
+
+
+
     return -1;
 }
 
@@ -117,6 +158,9 @@ ssize_t fs_create(FileSystem *fs) {
  * @return      Whether or not removing the specified Inode was successful.
  **/
 bool    fs_remove(FileSystem *fs, size_t inode_number) {
+
+
+
     return false;
 }
 
@@ -128,6 +172,9 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
  * @return      Size of specified Inode (-1 if does not exist).
  **/
 ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
+
+
+
     return -1;
 }
 
@@ -149,6 +196,9 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
+    
+
+    
     return -1;
 }
 
@@ -170,6 +220,9 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
+    
+    
+
     return -1;
 }
 
