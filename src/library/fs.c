@@ -122,27 +122,47 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
     bool *bitmap = malloc(disk->blocks * sizeof(bool));
     memset(bitmap, 1, disk->blocks * sizeof(bool));
 
-    for(int i=0; i < s.super.inode_blocks + 1; i++) {
-            bitmap[i]=0;
-            printf("fs.free_blocks[%d] == false\n", i);
 
-    }
+    for(int i=0; i < s.super.inode_blocks + 1; i++) bitmap[i]=0; 
 
-    for(int q=1; q <= s.super.inode_blocks; q++) { // is this necessary
+    Block table;
+    Block ind;
 
-        if (disk_read(disk, q, s.data) == DISK_FAILURE) {
+    for(int q=1; q <= s.super.inode_blocks; q++) {
+
+        if (disk_read(disk, q, table.data) == DISK_FAILURE) {
             return false;
-        }
+        } 
 
         for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
-            printf("fs.free_blocks[%d] checked\n", s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK));
 
-            if(s.inodes[i].valid == 1) {
-                bitmap[s.super.inode_blocks + 1 + i + (q-1)*INODES_PER_BLOCK]=0;
-                printf("fs.free_blocks[%d] == false\n", s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK));
+            if(table.inodes[i].valid == 1) { 
+
+                printf("Inode %u: \nvalid: %u\nsize: %u\n", i, table.inodes[i].valid, table.inodes[i].size);
+
+                // Check Direct pointers
+
+                for(int q = 0; q < POINTERS_PER_INODE; q++) {
+                    bitmap[table.inodes[i].direct[q]]=0;
+                    printf("table.inodes[%d].direct[%d] == %u\n", i, q, table.inodes[i].direct[q]);
+                }
+                printf("\n");
+
+                // Check Indirect pointers
+
+                if(table.inodes[i].indirect) {
+
+                    bitmap[table.inodes[i].indirect]=0;
+ 
+                    for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
+                        bitmap[table.inodes[i].indirect.]=0;
+                      printf("table.inodes[%d].direct[%d] == %u\n", i, q, table.inodes[i].direct[q]);
+                    }
+                }
+
             }
+
         }
-        // very close
 
     }
 
@@ -164,6 +184,7 @@ void    fs_unmount(FileSystem *fs) {
 
     fs->disk=NULL;
     free(fs->free_blocks);
+    fs->free_blocks=NULL;
 
 }
 
