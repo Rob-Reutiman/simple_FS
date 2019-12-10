@@ -27,27 +27,56 @@ void    fs_debug(Disk *disk) {
     }
 
     printf("SuperBlock:\n");
+    if(block.super.magic_number == MAGIC_NUMBER) {
+        printf("    magic number is valid\n");
+    } else {
+        printf("    magic number is invalid\n");
+
+    }
     printf("    %u blocks\n"         , block.super.blocks);
     printf("    %u inode blocks\n"   , block.super.inode_blocks);
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
-    if (disk_read(disk, 1, block.data) == DISK_FAILURE) {
-        return;
-    }
 
-    for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
+    for(int j=1; j <= block.super.inode_blocks; j++) {
         
-        if(block.inodes[i].valid == 1) {
-            printf("Inode %u\n", i);
-            printf("    size: %u bytes\n", block.inodes[i].size);
-            uint32_t direct_num = 0;
-            for(uint32_t q = 0; q < POINTERS_PER_INODE; q++) {
-                if(block.inodes[i].direct[q]) direct_num++;
-            }
-            printf("    direct blocks: %u\n", direct_num); 
+        if (disk_read(disk, j, block.data) == DISK_FAILURE) {
+            return;
         }
+
+        for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
         
+            if(block.inodes[i].valid == 1) {
+                printf("Inode %u:\n", i);
+                printf("    size: %u bytes\n", block.inodes[i].size);
+                printf("    direct blocks:"); 
+                for(uint32_t q = 0; q < POINTERS_PER_INODE; q++) {
+                    if(block.inodes[i].direct[q]) printf(" %d", block.inodes[i].direct[q]);
+                }
+                printf("\n");
+ 
+                if(block.inodes[i].indirect) {
+
+                    Block ind;
+
+                    printf("    indirect block: %d\n", block.inodes[i].indirect);
+
+                    if (disk_read(disk, block.inodes[i].indirect, ind.data) == DISK_FAILURE) {
+                        return;
+                    }  
+
+                    printf("    indirect data blocks:");
+
+                    for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
+                        if(ind.pointers[q] != 0) printf(" %d", ind.pointers[q]);
+                    }
+
+                    printf("\n");
+                }
+            }
+
+        }
     }
 
 }
@@ -68,17 +97,28 @@ void    fs_debug(Disk *disk) {
  **/
 bool    fs_format(FileSystem *fs, Disk *disk) {
 
-    if(fs->disk == disk) { // might be wrong (don't format mounted disk)
+    if(fs->disk != NULL) { 
         return false;
     }
 
-    fs->meta_data.magic_number = MAGIC_NUMBER;
-    fs->meta_data.blocks = disk->blocks;
-    fs->meta_data.inode_blocks = disk->blocks * .9;
-    fs->meta_data.inodes = fs->meta_data.inode_blocks * INODES_PER_BLOCK;
- 
-    for(uint32_t i = 2; i < disk->blocks; i++) {
-        if(disk_write(disk, i, 0) == DISK_FAILURE) return false;
+    Block s;
+
+    s.super.magic_number = MAGIC_NUMBER;
+    s.super.blocks = disk->blocks;
+    
+    if(disk->blocks % 10 == 0) {
+        s.super.inode_blocks = disk->blocks / 10;
+    } else {
+        s.super.inode_blocks = (disk->blocks / 10) + 1;
+    }
+
+    s.super.inodes = s.super.inode_blocks * INODES_PER_BLOCK;
+
+    if(disk_write(disk, 0, s.data) == DISK_FAILURE) return false;
+
+    Block ib;
+    for(uint32_t i = 1; i < disk->blocks; i++) {
+        if(disk_write(disk, i, ib.data) == DISK_FAILURE) return false;
     }
 
     return true;
@@ -112,6 +152,14 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
         return false;
     }
 
+    if(s.super.blocks != disk->blocks) {
+        return false;
+    }
+
+    if((s.super.inode_blocks != (disk->blocks / 10 )) && (s.super.inode_blocks != (disk->blocks / 10 ) + 1)) {
+        return false;
+    }
+
     if(fs->disk) {      // no double mount
         return false;
     }
@@ -138,25 +186,24 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
 
             if(table.inodes[i].valid == 1) { 
 
-                printf("Inode %u: \nvalid: %u\nsize: %u\n", i, table.inodes[i].valid, table.inodes[i].size);
-
                 // Check Direct pointers
 
                 for(int q = 0; q < POINTERS_PER_INODE; q++) {
                     bitmap[table.inodes[i].direct[q]]=0;
-                    printf("table.inodes[%d].direct[%d] == %u\n", i, q, table.inodes[i].direct[q]);
                 }
-                printf("\n");
 
                 // Check Indirect pointers
 
                 if(table.inodes[i].indirect) {
 
                     bitmap[table.inodes[i].indirect]=0;
- 
+
+                    if (disk_read(disk, table.inodes[i].indirect, ind.data) == DISK_FAILURE) {
+                        return false;
+                    } 
+
                     for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
-                        bitmap[table.inodes[i].indirect.]=0;
-                      printf("table.inodes[%d].direct[%d] == %u\n", i, q, table.inodes[i].direct[q]);
+                        bitmap[ind.pointers[q]]=0;
                     }
                 }
 
@@ -202,7 +249,7 @@ void    fs_unmount(FileSystem *fs) {
  **/
 ssize_t fs_create(FileSystem *fs) {
 
-
+    
 
     return -1;
 }
@@ -224,9 +271,15 @@ ssize_t fs_create(FileSystem *fs) {
  **/
 bool    fs_remove(FileSystem *fs, size_t inode_number) {
 
+    Inode *i = NULL;
+    if(!fs_load_inode(fs, inode_number, i)) {
+        return false;
+    }
 
 
-    return false;
+
+
+    return true;
 }
 
 /**
@@ -238,9 +291,12 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
  **/
 ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
 
+    Inode *i = NULL;
+    if(!fs_load_inode(fs, inode_number, i)) {
+        return -1;
+    }
 
-
-    return -1;
+    return i->size;
 }
 
 /**
@@ -262,8 +318,13 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
     
-
+    Inode *i = NULL;
+    if(!fs_load_inode(fs, inode_number, i)) {
+        return -1;
+    }
     
+   // i->direct
+
     return -1;
 }
 
@@ -286,9 +347,55 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
     
-    
+    Inode *i = NULL;
+    if(!fs_load_inode(fs, inode_number, i)) {
+        return -1;
+    }
+
+    //disk_write(
 
     return -1;
 }
+
+/* Helper Functions */
+
+/**
+ * Load inode i with inode associated with number.
+ *
+ * @param       fs              Pointer to FileSystem structure.
+ * @param       inode_number    Inode to load in i
+ * @param       i               Inode struct.
+ * @return      true if successful (false on error)
+ **/
+bool fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
+
+    int block_num = (inode_number / INODES_PER_BLOCK) + 1; // which block to read from
+    int i_num = inode_number % INODES_PER_BLOCK;
+
+    Block s;
+
+    if (disk_read(fs->disk, block_num, s.data) == DISK_FAILURE) {
+            return false;
+    }
+
+    node=&(s.inodes[i_num]);
+
+    return true;
+}
+
+/**
+ * Save inode i with inode associated with number.
+ *
+ * @param       fs              Pointer to FileSystem structure.
+ * @param       inode_number    Inode to save in i
+ * @param       i               Inode struct.
+ * @return      true if successful (false on error)
+ **/
+
+bool fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node) {
+
+    return true;
+}
+
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

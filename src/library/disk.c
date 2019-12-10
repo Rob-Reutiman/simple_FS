@@ -66,7 +66,7 @@ void	disk_close(Disk *disk) {
         fprintf(stderr, "Error closing file: %s\n", strerror(errno));
     }
     
-    printf("DISK READS:  %lu\nDISK WRITES: %lu\n", disk->reads, disk->writes);
+    printf("%lu disk block reads\n%lu disk block writes\n", disk->reads, disk->writes);
 
     free(disk);
 
@@ -95,13 +95,11 @@ ssize_t disk_read(Disk *disk, size_t block, char *data) {
         return DISK_FAILURE;
     }
 
-    int new_fd = disk->fd;
-    if(lseek(new_fd, block*BLOCK_SIZE, SEEK_SET) == -1) {
-        fprintf(stderr, "Error seeking block: %s\n", strerror(errno));
-        return DISK_FAILURE;
+    if(lseek(disk->fd, block*BLOCK_SIZE, SEEK_SET) == -1) {
+        return 0;
     }
 
-    if(read(new_fd, data, BLOCK_SIZE) == -1) { // args here may be wrong
+    if(read(disk->fd, data, BLOCK_SIZE) == DISK_FAILURE) { // args here may be wrong
         fprintf(stderr, "Error writing to file: %s\n", strerror(errno));
         return DISK_FAILURE;
     }
@@ -135,9 +133,8 @@ ssize_t disk_write(Disk *disk, size_t block, char *data) {
     }
 
     int new_fd = disk->fd;
-    if(lseek(new_fd, block*BLOCK_SIZE, SEEK_SET) == -1) {
-        fprintf(stderr, "Error seeking block: %s\n", strerror(errno));
-        return DISK_FAILURE;
+    if(lseek(new_fd, block*BLOCK_SIZE, SEEK_SET) == DISK_FAILURE) {
+        return 0;
     }
 
     if(write(new_fd, data, BLOCK_SIZE) == -1) { // args here may be wrong
