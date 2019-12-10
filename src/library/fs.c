@@ -124,6 +124,8 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
 
     for(int i=0; i < s.super.inode_blocks + 1; i++) {
             bitmap[i]=0;
+            printf("fs.free_blocks[%d] == false\n", i);
+
     }
 
     for(int q=1; q <= s.super.inode_blocks; q++) { // is this necessary
@@ -133,8 +135,11 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
         }
 
         for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
+            printf("fs.free_blocks[%d] checked\n", s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK));
+
             if(s.inodes[i].valid == 1) {
-                bitmap[s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK)]=0;
+                bitmap[s.super.inode_blocks + 1 + i + (q-1)*INODES_PER_BLOCK]=0;
+                printf("fs.free_blocks[%d] == false\n", s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK));
             }
         }
         // very close
