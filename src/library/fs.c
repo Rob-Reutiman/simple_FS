@@ -103,9 +103,47 @@ bool    fs_format(FileSystem *fs, Disk *disk) {
  **/
 bool    fs_mount(FileSystem *fs, Disk *disk) {
 
+    Block s;
+    if(disk_read(disk, 0, s.data) == DISK_FAILURE) { // read data into block
+        return false;
+    }
 
+    if(s.super.magic_number != MAGIC_NUMBER) { // check if fs
+        return false;
+    }
 
-    return false;
+    if(fs->disk) {      // no double mount
+        return false;
+    }
+
+    fs->disk=disk;
+    fs->meta_data=s.super;
+
+    bool *bitmap = malloc(disk->blocks * sizeof(bool));
+    memset(bitmap, 1, disk->blocks * sizeof(bool));
+
+    for(int i=0; i < s.super.inode_blocks + 1; i++) {
+            bitmap[i]=0;
+    }
+
+    for(int q=1; q <= s.super.inode_blocks; q++) { // is this necessary
+
+        if (disk_read(disk, q, s.data) == DISK_FAILURE) {
+            return false;
+        }
+
+        for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
+            if(s.inodes[i].valid == 1) {
+                bitmap[s.super.inode_blocks + 1 + i + ((q-1)*INODES_PER_BLOCK)]=0;
+            }
+        }
+        // very close
+
+    }
+
+    fs->free_blocks=bitmap;
+
+    return true;
 }
 
 /**
@@ -119,7 +157,8 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
  **/
 void    fs_unmount(FileSystem *fs) {
 
-
+    fs->disk=NULL;
+    free(fs->free_blocks);
 
 }
 
