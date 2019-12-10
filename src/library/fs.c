@@ -271,13 +271,53 @@ ssize_t fs_create(FileSystem *fs) {
  **/
 bool    fs_remove(FileSystem *fs, size_t inode_number) {
 
-    Inode *i = NULL;
-    if(!fs_load_inode(fs, inode_number, i)) {
-        return false;
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return false;
     }
 
+    if(b.inodes[inode_number].valid == 1) { 
 
+        // Release Direct pointers
 
+        for(int q = 0; q < POINTERS_PER_INODE; q++) {
+            fs->free_blocks[b.inodes[inode_number].direct[q]]=1;
+        }
+
+        // Release Indirect pointer 
+
+        if(b.inodes[inode_number].indirect) {
+
+            Block ind;
+
+            fs->free_blocks[b.inodes[inode_number].indirect]=1;
+
+            if (disk_read(fs->disk, b.inodes[inode_number].indirect, ind.data) == DISK_FAILURE) {
+                return false;
+            } 
+
+            for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
+                fs->free_blocks[ind.pointers[q]]=1;
+            }
+
+        }
+
+    } else {
+        return false;
+    } 
+
+    b.inodes[inode_number].valid = 0;
+    b.inodes[inode_number].size = 0;
+
+    for(int q = 0; q < POINTERS_PER_INODE; q++) {
+        b.inodes[inode_number].direct[q]=0;
+    }
+
+    b.inodes[inode_number].indirect=0;
+
+    if (disk_write(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return false;
+    }
 
     return true;
 }
@@ -291,12 +331,17 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
  **/
 ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
 
-    Inode *i = NULL;
-    if(!fs_load_inode(fs, inode_number, i)) {
-        return -1;
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return -1;
     }
 
-    return i->size;
+    if(b.inodes[inode_number].valid) {
+        return b.inodes[inode_number].size;
+    }
+
+    return -1;
+
 }
 
 /**
@@ -318,11 +363,13 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
     
-    Inode *i = NULL;
-    if(!fs_load_inode(fs, inode_number, i)) {
-        return -1;
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return -1;
     }
-    
+
+
+
    // i->direct
 
     return -1;
@@ -347,55 +394,14 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
     
-    Inode *i = NULL;
-    if(!fs_load_inode(fs, inode_number, i)) {
-        return -1;
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return -1;
     }
-
+    
     //disk_write(
 
     return -1;
 }
-
-/* Helper Functions */
-
-/**
- * Load inode i with inode associated with number.
- *
- * @param       fs              Pointer to FileSystem structure.
- * @param       inode_number    Inode to load in i
- * @param       i               Inode struct.
- * @return      true if successful (false on error)
- **/
-bool fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
-
-    int block_num = (inode_number / INODES_PER_BLOCK) + 1; // which block to read from
-    int i_num = inode_number % INODES_PER_BLOCK;
-
-    Block s;
-
-    if (disk_read(fs->disk, block_num, s.data) == DISK_FAILURE) {
-            return false;
-    }
-
-    node=&(s.inodes[i_num]);
-
-    return true;
-}
-
-/**
- * Save inode i with inode associated with number.
- *
- * @param       fs              Pointer to FileSystem structure.
- * @param       inode_number    Inode to save in i
- * @param       i               Inode struct.
- * @return      true if successful (false on error)
- **/
-
-bool fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node) {
-
-    return true;
-}
-
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */
