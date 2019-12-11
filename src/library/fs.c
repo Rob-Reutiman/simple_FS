@@ -249,9 +249,47 @@ void    fs_unmount(FileSystem *fs) {
  **/
 ssize_t fs_create(FileSystem *fs) {
 
-    
+    Block table;
+    bool not_found = true;
+    int inum = 0;
+    int blocknum=0;
 
-    return -1;
+    for(int q=1; (q <= fs->meta_data.inode_blocks) && not_found; q++) {
+
+        if (disk_read(fs->disk, q, table.data) == DISK_FAILURE) {
+            return -1;
+        } 
+
+        for(uint32_t i = 0; i < INODES_PER_BLOCK; i++) {
+
+            if(table.inodes[i].valid == 0) { 
+                inum = i;
+                table.inodes[inum].valid = 1;
+                table.inodes[inum].size = 0;
+
+                for(int j = 0; j < POINTERS_PER_INODE; j++) {
+                    table.inodes[inum].direct[j]=0;
+                }
+
+                table.inodes[inum].indirect=0;
+                not_found = false;
+                blocknum=q;
+                break;
+            }
+
+        }
+
+    }
+
+    if(not_found) {
+        return -1;
+    }
+
+    if (disk_write(fs->disk, blocknum, table.data) == DISK_FAILURE) {
+            return -1;
+    }
+
+    return inum;
 }
 
 /**
@@ -362,17 +400,84 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-    
+   
+    // Offset is actually what direct pointer we wanna read first offset / BLOCK_SIZE
+
+    ssize_t bytes_to_go = length; 
+    ssize_t b_read = 0;
     Block b;
     if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
-            return -1;
+            return false;
     }
 
+    if(b.inodes[inode_number].valid == 1) { 
+
+        // Read Direct pointers
+
+        Block d;
 
 
-   // i->direct
 
-    return -1;
+    /*    for(int q = offset; q < POINTERS_PER_INODE; q++) {
+
+            if (disk_read(fs->disk, b.inodes[inode_number].direct[q], d.data + offset) == DISK_FAILURE) {
+                return false;
+            }
+
+            if(sizeof(d.data) > bytes_to_go) {
+                memcpy(data, d.data, bytes_to_go);
+                bytes_to_go = 0;
+                b_read+=bytes_to_go;
+                break;
+            } else {
+                memcpy(data, d.data, sizeof(d.data));
+                bytes_to_go -= sizeof(d.data);
+                b_read+=sizeof(d.data);
+            }
+
+        }
+
+        // Read Indirect pointer 
+
+        if(b.inodes[inode_number].indirect) {
+
+            Block ind;
+
+            if (disk_read(fs->disk, b.inodes[inode_number].indirect, ind.data) == DISK_FAILURE) {
+                return false;
+            } 
+
+            Block i_data;
+
+            for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
+                if (disk_read(fs->disk, ind.pointers[q], i_data.data) == DISK_FAILURE) {
+                    return false;
+                }
+
+                strcat(data, i_data.data);
+                b_read+=sizeof(i_data.data);
+
+
+                if(sizeof(i_data.data) > bytes_to_go) {
+                    memcpy(data, i_data.data, bytes_to_go);
+                    bytes_to_go = 0;
+                    break;
+                    b_read+=bytes_to_go;
+                } else {
+                    memcpy(data, i_data.data, sizeof(i_data.data));
+                    bytes_to_go -= sizeof(i_data.data);
+                    b_read+=sizeof(i_data.data);
+                } 
+
+            }
+
+        }
+
+    } else {
+        return -1; */
+    } 
+
+    return b_read;
 }
 
 /**
@@ -393,15 +498,8 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-    
-    Block b;
-    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
-            return -1;
-    }
-    
-    //disk_write(
-
-    return -1;
+        
+      return -1;
 }
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */
