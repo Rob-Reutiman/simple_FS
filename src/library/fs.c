@@ -314,23 +314,25 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
             return false;
     }
 
-    if(b.inodes[inode_number].valid == 1) { 
+    size_t i_num = inode_number % INODES_PER_BLOCK;
+
+    if(b.inodes[i_num].valid == 1) { 
 
         // Release Direct pointers
 
         for(int q = 0; q < POINTERS_PER_INODE; q++) {
-            fs->free_blocks[b.inodes[inode_number].direct[q]]=1;
+            fs->free_blocks[b.inodes[i_num].direct[q]]=1;
         }
 
         // Release Indirect pointer 
 
-        if(b.inodes[inode_number].indirect) {
+        if(b.inodes[i_num].indirect) {
 
             Block ind;
 
-            fs->free_blocks[b.inodes[inode_number].indirect]=1;
+            fs->free_blocks[b.inodes[i_num].indirect]=1;
 
-            if (disk_read(fs->disk, b.inodes[inode_number].indirect, ind.data) == DISK_FAILURE) {
+            if (disk_read(fs->disk, b.inodes[i_num].indirect, ind.data) == DISK_FAILURE) {
                 return false;
             } 
 
@@ -344,14 +346,14 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
         return false;
     } 
 
-    b.inodes[inode_number].valid = 0;
-    b.inodes[inode_number].size = 0;
+    b.inodes[i_num].valid = 0;
+    b.inodes[i_num].size = 0;
 
     for(int q = 0; q < POINTERS_PER_INODE; q++) {
-        b.inodes[inode_number].direct[q]=0;
+        b.inodes[i_num].direct[q]=0;
     }
 
-    b.inodes[inode_number].indirect=0;
+    b.inodes[i_num].indirect=0;
 
     if (disk_write(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
             return false;
@@ -374,8 +376,10 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
             return -1;
     }
 
-    if(b.inodes[inode_number].valid) {
-        return b.inodes[inode_number].size;
+    size_t i_num = inode_number % INODES_PER_BLOCK;
+
+    if(b.inodes[i_num].valid) {
+        return b.inodes[i_num].size;
     }
 
     return -1;
@@ -400,82 +404,109 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-   
-    // Offset is actually what direct pointer we wanna read first offset / BLOCK_SIZE
-
-    ssize_t bytes_to_go = length; 
-    ssize_t b_read = 0;
-    Block b;
-    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
-            return false;
+    
+    if(length == 0) {
+        return 0;
     }
 
-    if(b.inodes[inode_number].valid == 1) { 
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return -1;
+    }
 
-        // Read Direct pointers
+    size_t i_num = inode_number % INODES_PER_BLOCK;
+    size_t d_num = offset / BLOCK_SIZE; 
+    size_t b_read = 0;
 
-        Block d;
+    if(b.inodes[inode_number].valid == 0) {
+       return -1;
+    } 
 
+    // Reset length if trying to read too much
 
+    if(length + offset > b.inodes[i_num].size) {
+        length = b.inodes[i_num].size - offset;
+    }
 
-    /*    for(int q = offset; q < POINTERS_PER_INODE; q++) {
+//    printf("length: %lu\n", length);
+    
+    int ind_num = 0;
 
-            if (disk_read(fs->disk, b.inodes[inode_number].direct[q], d.data + offset) == DISK_FAILURE) {
-                return false;
+    while(b_read < length) {
+
+        // Read directs
+
+        if(d_num < POINTERS_PER_INODE) {
+
+ //           printf("\ndirect num: %lu\n", d_num);
+
+            Block d;
+            size_t byte_start = offset % BLOCK_SIZE;
+            size_t read_size = BLOCK_SIZE - byte_start;
+
+            if (disk_read(fs->disk, b.inodes[i_num].direct[d_num], d.data + offset) == DISK_FAILURE) {
+                return -1;
             }
 
-            if(sizeof(d.data) > bytes_to_go) {
-                memcpy(data, d.data, bytes_to_go);
-                bytes_to_go = 0;
-                b_read+=bytes_to_go;
-                break;
+            if(b_read + read_size > length) {
+                memcpy(data+b_read, &d.data[byte_start], length - b_read);
+                b_read=length;
+  //              printf("total b_read: %lu\n", b_read);
+  //              fflush(stdout);
             } else {
-                memcpy(data, d.data, sizeof(d.data));
-                bytes_to_go -= sizeof(d.data);
-                b_read+=sizeof(d.data);
+                memcpy(data+b_read, &d.data[byte_start], read_size);
+                b_read+= read_size;
+   //             printf("total b_read: %lu\n", b_read);
+   //             fflush(stdout);
             }
 
-        }
+            d_num++;
+
+        } else {
 
         // Read Indirect pointer 
 
-        if(b.inodes[inode_number].indirect) {
+            if(b.inodes[i_num].indirect) {
 
-            Block ind;
+                if(ind_num < POINTERS_PER_BLOCK) {
 
-            if (disk_read(fs->disk, b.inodes[inode_number].indirect, ind.data) == DISK_FAILURE) {
-                return false;
-            } 
+  //                  printf("\nind block: %d\n", ind_num);
 
-            Block i_data;
+                    Block ind;
 
-            for(int q = 0; q < POINTERS_PER_BLOCK; q++) {
-                if (disk_read(fs->disk, ind.pointers[q], i_data.data) == DISK_FAILURE) {
-                    return false;
+                    if (disk_read(fs->disk, b.inodes[i_num].indirect, ind.data) == DISK_FAILURE) {
+                        return -1;
+                    } 
+
+                    Block i_data;
+
+                    if(disk_read(fs->disk, ind.pointers[ind_num], i_data.data) == DISK_FAILURE) {
+                        return -1;
+                    }
+
+                    size_t byte_start = offset % BLOCK_SIZE;
+                    size_t read_size = BLOCK_SIZE - byte_start;
+
+                    if(b_read + read_size > length) {
+                        memcpy(data+b_read, &i_data.data[byte_start], length - b_read);
+                        b_read=length;
+      //                  printf("final b_read: %lu\n", b_read);
+      //                  fflush(stdout);
+                    } else {
+                        memcpy(data+b_read, &i_data.data[byte_start], read_size);
+                        b_read+=read_size;
+      //                  printf("total b_read: %lu\n", b_read);
+      //                  fflush(stdout);
+                    }
+
+                    ind_num++;
                 }
 
-                strcat(data, i_data.data);
-                b_read+=sizeof(i_data.data);
-
-
-                if(sizeof(i_data.data) > bytes_to_go) {
-                    memcpy(data, i_data.data, bytes_to_go);
-                    bytes_to_go = 0;
-                    break;
-                    b_read+=bytes_to_go;
-                } else {
-                    memcpy(data, i_data.data, sizeof(i_data.data));
-                    bytes_to_go -= sizeof(i_data.data);
-                    b_read+=sizeof(i_data.data);
-                } 
-
             }
-
+ 
         }
 
-    } else {
-        return -1; */
-    } 
+    }
 
     return b_read;
 }
@@ -495,11 +526,111 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @param       data            Buffer with data to copy
  * @param       length          Number of bytes to write.
  * @param       offset          Byte offset from which to begin writing.
- * @return      Number of bytes read (-1 on error).
+ * @return      Number of bytes write (-1 on error).
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-        
-      return -1;
+
+    if(length == 0) {
+        return 0;
+    }
+
+    Block b;
+    if (disk_read(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+            return -1;
+    }
+
+    size_t i_num = inode_number % INODES_PER_BLOCK;
+
+    // Reset length if trying to write too much
+
+    if(length + offset > (BLOCK_SIZE * 5 + BLOCK_SIZE * 128)) {
+        length = BLOCK_SIZE * 5 + BLOCK_SIZE * 128;
+    }
+
+    printf("length: %lu\n", length);
+
+    size_t d_num = offset / BLOCK_SIZE; 
+    size_t b_write = 0;
+    
+    int ind_num = 0;
+
+    while(b_write < length) {
+
+        // Read directs
+
+        if(d_num < POINTERS_PER_INODE) {
+
+            printf("\ndirect num: %lu\n", d_num);
+
+            Block d;
+
+            size_t byte_start = offset % BLOCK_SIZE;
+            size_t write_size = BLOCK_SIZE - byte_start;
+
+            if(b_write + write_size > length) {
+                memcpy(&d.data[byte_start], data+b_write, length - b_write);
+                b_write=length;
+                printf("total b_write: %lu\n", b_write);
+                fflush(stdout);
+            } else {
+                memcpy(&d.data[byte_start], data+b_write, write_size);
+                b_write+= write_size;
+                printf("total b_write: %lu\n", b_write);
+                fflush(stdout);
+            } 
+
+            if (disk_write(fs->disk, b.inodes[i_num].direct[d_num], d.data) == DISK_FAILURE) {
+                return -1;
+            }
+            d_num++;
+
+        } else {
+
+        // Read Indirect pointer 
+
+            if(b.inodes[i_num].indirect) {
+
+                if(ind_num < POINTERS_PER_BLOCK) {
+
+    //                printf("\nind block: %d\n", ind_num);
+
+                    Block ind;
+
+                    if (disk_read(fs->disk, b.inodes[i_num].indirect, ind.data) == DISK_FAILURE) {
+                        return -1;
+                    } 
+
+                    Block i_data;
+
+                    size_t byte_start = offset % BLOCK_SIZE;
+                    size_t read_size = BLOCK_SIZE - byte_start;
+
+                    if(b_write + read_size > length) {
+                        memcpy(data+b_write, &i_data.data[byte_start], length - b_write);
+                        b_write=length;
+      //                  printf("final b_read: %lu\n", b_write);
+      //                  fflush(stdout);
+                    } else {
+                        memcpy(data+b_write, &i_data.data[byte_start], read_size);
+                        b_write+=read_size;
+       //                 printf("total b_read: %lu\n", b_write);
+       //                 fflush(stdout);
+                    }
+
+                    if(disk_write(fs->disk, ind.pointers[ind_num], i_data.data) == DISK_FAILURE) {
+                        return -1;
+                    }    
+
+                    ind_num++;
+                }
+
+            }
+ 
+        }
+
+    }
+
+    return b_write;
 }
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */
