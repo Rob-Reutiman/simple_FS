@@ -418,7 +418,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     size_t d_num = offset / BLOCK_SIZE; 
     size_t b_read = 0;
 
-    if(b.inodes[inode_number].valid == 0) {
+    if(b.inodes[i_num].valid == 0) {
        return -1;
     } 
 
@@ -431,6 +431,9 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
 //    printf("length: %lu\n", length);
     
     int ind_num = 0;
+    if(d_num > 5) {
+        ind_num = offset / BLOCK_SIZE - 5;
+    }
 
     while(b_read < length) {
 
@@ -553,10 +556,13 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
     size_t b_write = 0;
     
     int ind_num = 0;
+    if(d_num > 5) {
+        ind_num = offset / BLOCK_SIZE - 5;
+    }
 
     while(b_write < length) {
 
-        // Read directs
+        // Write to directs
 
         if(d_num < POINTERS_PER_INODE) {
 
@@ -579,51 +585,104 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                 fflush(stdout);
             } 
 
-            if (disk_write(fs->disk, b.inodes[i_num].direct[d_num], d.data) == DISK_FAILURE) {
+            // write to first free block in bitmap
+            int index = 0;
+            while(fs->free_blocks[index] == 0) index++;
+
+            if (disk_write(fs->disk, index, d.data) == DISK_FAILURE) {
                 return -1;
             }
+
+            b.inodes[i_num].size = b_write;
+            b.inodes[i_num].direct[d_num] = index;
+            fs->free_blocks[b.inodes[i_num].direct[d_num]]=0; // maybe 0
+
+// another write to update inode table
+
+            if (disk_write(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+                return -1;
+            }
+
             d_num++;
 
         } else {
 
-        // Read Indirect pointer 
+            // Create Indirect Block if we need to
 
-            if(b.inodes[i_num].indirect) {
+            if(!b.inodes[i_num].indirect) {
 
-                if(ind_num < POINTERS_PER_BLOCK) {
+                // write to first free block in bitmap
+                int index = 0;
+                while(fs->free_blocks[index] == 0) index++;
 
-    //                printf("\nind block: %d\n", ind_num);
+                b.inodes[i_num].indirect = index;
+                fs->free_blocks[index] = 0;
 
-                    Block ind;
-
-                    if (disk_read(fs->disk, b.inodes[i_num].indirect, ind.data) == DISK_FAILURE) {
-                        return -1;
-                    } 
-
-                    Block i_data;
-
-                    size_t byte_start = offset % BLOCK_SIZE;
-                    size_t read_size = BLOCK_SIZE - byte_start;
-
-                    if(b_write + read_size > length) {
-                        memcpy(data+b_write, &i_data.data[byte_start], length - b_write);
-                        b_write=length;
-      //                  printf("final b_read: %lu\n", b_write);
-      //                  fflush(stdout);
-                    } else {
-                        memcpy(data+b_write, &i_data.data[byte_start], read_size);
-                        b_write+=read_size;
-       //                 printf("total b_read: %lu\n", b_write);
-       //                 fflush(stdout);
-                    }
-
-                    if(disk_write(fs->disk, ind.pointers[ind_num], i_data.data) == DISK_FAILURE) {
-                        return -1;
-                    }    
-
-                    ind_num++;
+                if (disk_write(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+                    return -1;
                 }
 
+            }
+
+            if(ind_num < POINTERS_PER_BLOCK) {
+
+            printf("ind_block = %d\n", b.inodes[i_num].indirect);
+            printf("\nind pointer: %d\n", ind_num);
+            fflush(stdout);
+
+                Block ind;
+
+                Block i_data;
+
+                size_t byte_start = offset % BLOCK_SIZE;
+                size_t write_size = BLOCK_SIZE - byte_start;
+
+                if(b_write + write_size > length) {
+                    memcpy(&i_data.data[byte_start], data+b_write, length - b_write);
+                    b_write=length;
+                        printf("total b_write: %lu\n", b_write);
+                        fflush(stdout);
+                } else {
+                    memcpy(&i_data.data[byte_start], data+b_write, write_size);
+                    b_write+= write_size;
+                        printf("total b_write: %lu\n", b_write);
+                        fflush(stdout);
+                } 
+
+                printf("fail on writing to indirect pointer block\n");
+
+                // write to first free block in bitmap
+                int index2 = 0;
+                while(fs->free_blocks[index2] == 0) index2++;
+
+                printf("new id pointed to block: %d\n", index2);
+                fflush(stdout);
+
+                if (disk_write(fs->disk, index2, i_data.data) == DISK_FAILURE) {
+                    return -1;
+                }
+
+                printf("fail on writing to indirect blokc\n");
+
+                // Update indirect block
+
+                ind.pointers[ind_num] = index2;
+
+                if (disk_write(fs->disk, b.inodes[i_num].indirect, ind.data) == DISK_FAILURE) {
+                    return -1;
+                }
+
+                // Update original inode
+
+                fs->free_blocks[ind.pointers[ind_num]]=0; // maybe 1
+
+                // Update inode table
+
+                if (disk_write(fs->disk, inode_number / INODES_PER_BLOCK + 1, b.data) == DISK_FAILURE) {
+                    return -1;
+                }
+
+                ind_num++;
             }
  
         }
