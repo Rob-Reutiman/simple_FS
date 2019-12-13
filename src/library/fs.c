@@ -653,7 +653,10 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
                 // write to first free block in bitmap
                 int index2 = 0;
-                while(fs->free_blocks[index2] == 0) index2++;
+                while(fs->free_blocks[index2] == 0) {
+                    printf("free_blocks[%d] == %d\n", index2, fs->free_blocks[index2]);
+                    index2++;
+                }
 
                 printf("new id pointed to block: %d\n", index2);
                 fflush(stdout);
