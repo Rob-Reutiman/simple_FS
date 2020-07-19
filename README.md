@@ -1,24 +1,11 @@
-# Project 06: Simple File System
+# Operating Systems Project 06: Simple File System
 
-This is [Project 06] of [CSE.30341.FA19].
+For this project, I created a simplified version of the Unix File System.
 
-## Members
+This project is made up of three main components:
 
-1. Rob Reutiman (rreutima@nd.edu)
+Shell: The first component is a simple shell application that allows the user to perform operations on the SimpleFS such as printing debugging information about the file system, formatting a new file system, mounting a file system, creating files, and copying data in or out of the file system. To do this, it translates these user commands into file system operations.
 
-## Brainstorming
+File System: The second component takes the operations specified by the user through the shell and performs them on the SimpleFS disk image. This component is charged with organizing the on-disk data structures and performing all the bookkeeping necessary to allow for persistent storage of data. To store the data, it interacts with the disk emulator via functions such as disk_read and disk_write, which allow the file system read and write to the disk image in 4096 byte blocks.
 
-## Errata
-
-I am terribly confused as to what is wrong with my project. In fs.c on line 656, I iterate through 
-the list of free_blocks. The while loop should end if the comparison is zero, but it keeps going 
-for no reason. I print the comparison to stdout and can not determine how what I am doing could possibly
-be wrong based on the values being printed. The while loop is simply ignoring the logic I put in.
-
-Everything else works really well - this error was really annoying so I gave up after spending a quick 
-18+ hours on this project.
-
-> Describe any known errors, bugs, or deviations from the requirements.
-
-[Project 06]:       https://www3.nd.edu/~pbui/teaching/cse.30341.fa19/project06.html
-[CSE.30341.FA19]:   https://www3.nd.edu/~pbui/teaching/cse.30341.fa19/
+Disk Emulator: The third component emulates a disk by creating a disk image (created by dividing a normal file into 4096 byte blocks) and only allowing the File System to read and write in terms of blocks. This emulator persistently stores data to the disk image using the normal open, read, and write system calls.
