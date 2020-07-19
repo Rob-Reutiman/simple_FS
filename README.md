@@ -2,7 +2,7 @@
 
 For this project, I created a simplified version of the Unix File System.
 
-This project is made up of three main components:
+Simple_FS is made up of three main components:
 
 Shell: The first component is a simple shell application that allows the user to perform operations on the SimpleFS such as printing debugging information about the file system, formatting a new file system, mounting a file system, creating files, and copying data in or out of the file system. To do this, it translates these user commands into file system operations.
 
