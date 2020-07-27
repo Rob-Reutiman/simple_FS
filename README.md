@@ -1,4 +1,4 @@
-# Operating Systems Project 06
+# OS Project 06
 
 For this project, I created a simplified version of the Unix File System.
 
